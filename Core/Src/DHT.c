@@ -51,7 +51,7 @@ uint32_t DWT_Delay_Init(void)
   }
 }
 
-__STATIC_INLINE void delay(volatile uint32_t microseconds)
+/*__STATIC_INLINE*/ void delay(volatile uint32_t microseconds)
 {
   uint32_t clk_cycle_start = DWT->CYCCNT;
 
