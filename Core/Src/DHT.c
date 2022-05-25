@@ -8,7 +8,7 @@
 
 
 #define DHT_PORT GPIOC
-#define DHT_PIN GPIO_PIN_10
+#define DHT_PIN GPIO_PIN_8
 
 
 

@@ -177,7 +177,7 @@ char humid[1024];
 char soil[1024];
 
 DHT_DataTypedef DHT11_Data;
-float Temperature, Humidity;
+float Temperature, Humidity = 1.0;
 int relayRunning = 0;
 void relayOn(){
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1); //On
@@ -256,20 +256,22 @@ int main(void)
   //log("relayOn\r\n");
   //relayOn();
   /* DO NOT DELETE SET UP STUPID HAL_DELAY ------------------------------------------------------------------ */
-    DHT_GetData(&DHT11_Data);
+//    DHT_GetData(&DHT11_Data);
   /* DO NOT DELETE SET UP STUPID HAL_DELAY ------------------------------------------------------------------ */
 
   log("Setup End\r\n");
   while (1)
   {
 //	  getTemperatureC();
+
+	  /* relay testing 2 */
 	  	count++;
 	  	sprintf(tmplog,"#%d\r\n",count);
 	  	log(tmplog);
 	  	if(count % 2 == 0){
 	  		//if(relayRunning == 1){
 	  			relayOn();
-	  			HAL_Delay(1000);
+	  			HAL_Delay(5000);
 	  			relayOff();
 	  			HAL_Delay(2000);
 	  		//}else{
@@ -291,27 +293,30 @@ int main(void)
 
 
 /*sensor reading*/
-//		HAL_ADC_Start(&hadc1);
-//		// Poll ADC1 Perihperal & TimeOut = 1mSec
-//		HAL_ADC_PollForConversion(&hadc1, 1);
-//		// Read The ADC Conversion Result & Map It To PWM DutyCycle
-//		SoilHumidity = HAL_ADC_GetValue(&hadc1);
-//		sprintf(soil, "soil:  %d\r\n", SoilHumidity);
-//		log(soil);
+//
+		HAL_ADC_Start(&hadc1);
+		// Poll ADC1 Perihperal & TimeOut = 1mSec
+		HAL_ADC_PollForConversion(&hadc1, 1);
+		// Read The ADC Conversion Result & Map It To PWM DutyCycle
+		SoilHumidity = HAL_ADC_GetValue(&hadc1);
+		sprintf(soil, "soil:  %d\r\n", SoilHumidity);
+		log(soil);
+//		HAL_Delay(6000);
 
-	  	log("delay\r\n");
-	  	HAL_Delay(1000);
+//	  	log("delay\r\n");
+//	  	HAL_Delay(1000);
 	  	//delay(1000*1000);
+
 	  	log("DHT_GetData start\r\n");
 		DHT_GetData(&DHT11_Data);
-		//log("DHT_GetData end\r\n");
+		log("DHT_GetData end\r\n");
 		Temperature = DHT11_Data.Temperature;
 		Humidity = DHT11_Data.Humidity;
 		sprintf(temp, "temp:  %f\r\n", Temperature);
 		log(temp);
 		sprintf(humid, "humid:  %f\r\n", Humidity);
 		log(humid);
-		HAL_Delay(6000);
+		HAL_Delay(10000);
 
 //		/*LOGIC PART*/
 //		if(Temperature > tempConst && SoilHumidity > soilConst){
@@ -406,13 +411,13 @@ int main(void)
 
 
 //		-----------------------------esp part
-//		sendCommand(xx, Humidity, SoilHumidity, Temperature, light);
-//		if(HAL_UART_Receive(&huart2, &Rx_byte2, 1,1000) == HAL_OK){
-//			log("-----2\r\n");
-//			sprintf(tmplog,"%c\r\n",Rx_byte2);
-//			log(tmplog);
-//		}
-//		HAL_Delay(30000);
+		sendCommand(xx, Humidity, SoilHumidity, Temperature, light);
+		if(HAL_UART_Receive(&huart2, &Rx_byte2, 1,1000) == HAL_OK){
+			log("-----2\r\n");
+			sprintf(tmplog,"%c\r\n",Rx_byte2);
+			log(tmplog);
+		}
+		HAL_Delay(30000);
 //		-----------------------------esp part
 
 
@@ -614,7 +619,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_8, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
@@ -632,11 +637,17 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC4 PC10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_10;
+  /*Configure GPIO pins : PC4 PC8 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_8;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PC10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PB8 PB9 */

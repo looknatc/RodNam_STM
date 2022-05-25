@@ -7,9 +7,9 @@ main.c:142:5:checkCommandUart2	4	static
 main.c:182:6:relayOn	8	static
 main.c:189:6:relayOff	8	static
 main.c:200:5:main	4264	static
-main.c:439:6:SystemClock_Config	88	static
-main.c:484:13:MX_ADC1_Init	24	static
-main.c:534:13:MX_USART1_UART_Init	8	static
-main.c:567:13:MX_USART2_UART_Init	8	static
-main.c:600:13:MX_GPIO_Init	48	static
-main.c:656:6:Error_Handler	4	static,ignoring_inline_asm
+main.c:447:6:SystemClock_Config	88	static
+main.c:492:13:MX_ADC1_Init	24	static
+main.c:542:13:MX_USART1_UART_Init	8	static
+main.c:575:13:MX_USART2_UART_Init	8	static
+main.c:608:13:MX_GPIO_Init	48	static
+main.c:670:6:Error_Handler	4	static,ignoring_inline_asm
