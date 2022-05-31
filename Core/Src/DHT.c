@@ -2,21 +2,22 @@
 
 /************** MAKE CHANGES HERE ********************/
 #include "stm32f4xx_hal.h"
+#include <stdio.h>
 
 //#define TYPE_DHT11    // define according to your sensor
 #define TYPE_DHT22
 
 
-#define DHT_PORT GPIOC
-#define DHT_PIN GPIO_PIN_8
 
 
-
+void log(char*);
+char tmp[1000];
 
 /*******************************************     NO CHANGES AFTER THIS LINE      ****************************************************/
 
 uint8_t Rh_byte1, Rh_byte2, Temp_byte1, Temp_byte2;
-uint16_t SUM; uint8_t Presence = 0;
+uint16_t SUM;
+int Presence = 0;
 
 #include "DHT.h"
 
@@ -83,26 +84,35 @@ void Set_Pin_Input (GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
 
 void DHT_Start (void)
 {
-	DWT_Delay_Init();
+	//log("DHT_Start 1\r\n");
+	int init = DWT_Delay_Init();
+	//log("d1\r\n");
+	//delay(2000*2000);
+	//log("d2\r\n");
+	//Set_Pin_Input(DHT_PORT, DHT_PIN);
+	//int pval = HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN);
+	//sprintf(tmp,"pval=%d\r\n",pval);log(tmp);
+
 	Set_Pin_Output (DHT_PORT, DHT_PIN);  // set the pin as output
+	//HAL_GPIO_WritePin (DHT_PORT, DHT_PIN, 1);
+	//delay (1000);   // wait for 18ms
 	HAL_GPIO_WritePin (DHT_PORT, DHT_PIN, 0);   // pull the pin low
-
-#if defined(TYPE_DHT11)
-	delay (18000);   // wait for 18ms
-#endif
-
-#if defined(TYPE_DHT22)
+	//log("DHT_Start 2\r\n");
 	delay (1200);  // >1ms delay
-#endif
-
+	//log("DHT_Start 3\r\n");
     HAL_GPIO_WritePin (DHT_PORT, DHT_PIN, 1);   // pull the pin high
-    delay (20);   // wait for 30us
+    delay (30);   // wait for 30us
+    //delay (30);   // wait for 30us
+    //pval = HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN);
+    //sprintf(tmp,"pval=%d\r\n",pval);log(tmp);
 	Set_Pin_Input(DHT_PORT, DHT_PIN);    // set as input
+	//log("DHT_Start 4\r\n");
 }
 
-uint8_t DHT_Check_Response (void)
+int DHT_Check_Response (void)
 {
-	uint8_t Response = 0;
+	//log("DHT_Check_Response\r\n");
+	int Response = 0;
 	delay (40);
 	if (!(HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN)))
 	{
@@ -110,8 +120,19 @@ uint8_t DHT_Check_Response (void)
 		if ((HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN))) Response = 1;
 		else Response = -1;
 	}
-	while ((HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN)));   // wait for the pin to go low
-
+	//while ((HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN)));   // wait for the pin to go low
+	int i =0;
+	for(i=0;i<5000;i++){
+		if((HAL_GPIO_ReadPin (DHT_PORT, DHT_PIN)) == 0){
+			break;
+		}else{
+			delay(1000);
+		}
+	}
+	if(i == 5000){
+		Response = -2;
+	}
+	//log("DHT_Check_Response out\r\n");
 	return Response;
 }
 
@@ -137,7 +158,14 @@ uint8_t DHT_Read (void)
 void DHT_GetData (DHT_DataTypedef *DHT_Data)
 {
     DHT_Start ();
+    //log("DHT_GetData 1\r\n");
 	Presence = DHT_Check_Response ();
+	if(Presence < 0){
+		sprintf(tmp,"Presence=%d\r\n",Presence);
+		log(tmp);
+		return;
+	}
+	//log("DHT_GetData 2\r\n");
 	Rh_byte1 = DHT_Read ();
 	Rh_byte2 = DHT_Read ();
 	Temp_byte1 = DHT_Read ();

@@ -1,0 +1,3 @@
+MYDHT22.c:78:13:ONE_WIRE_Pin_Read	8	static
+MYDHT22.c:35:6:DHT22_Init	0	static
+MYDHT22.c:148:6:DHT22_GetTemp_Humidity	56	static

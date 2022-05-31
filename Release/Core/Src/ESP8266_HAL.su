@@ -1,0 +1,4 @@
+ESP8266_HAL.c:46:6:ESP_Init	104	static
+ESP8266_HAL.c:115:5:Server_Send	104	static
+ESP8266_HAL.c:130:6:Server_Handle	1048	static
+ESP8266_HAL.c:159:6:Server_Start	88	static

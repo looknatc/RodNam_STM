@@ -21,8 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "ESP8266_HAL.h"
-#include "DHT.h"
+//#include "ESP8266_HAL.h"
+//#include "DHT.h"
+//#include "MYDHT22.h"
+#include <stdarg.h>
 //#include "DHT22.h"
 
 /* USER CODE END Includes */
@@ -73,60 +75,39 @@ volatile uint8_t Rx_indx2 = 0;
 
 char uart_recv;
 char str[10240];
+char tmp[1000];
 int counter = 0;
-void log(char* str){
+float parTemperature = 36;
+float parSoilHumidity = 70;
+int parHumidity = 50;
+int parWater = 5;
+int parDoEvery = 20;
+
+void serialSend(char* str){
 	HAL_UART_Transmit(&huart2, str, strlen(str), 10);
 }
+
+#define log(x)	serialSend(x)
 void wifisend(char* str){
 	HAL_UART_Transmit(&huart1, str, strlen(str), 10);
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	if (huart == &huart1) { // Current UART
-				Rx_data[Rx_indx++] = Rx_byte;    // Add data to Rx_Buffer
-				HAL_UART_Receive_IT(&huart1, &Rx_byte, 1);
+		Rx_data[Rx_indx++] = Rx_byte;    // Add data to Rx_Buffer
+		HAL_UART_Receive_IT(&huart1, &Rx_byte, 1);
 	}
-
-
-//	if (huart == &huart2) { // Current UART
-//		Rx_data2[Rx_indx2++] = Rx_byte2;    // Add data to Rx_Buffer
-//		HAL_UART_Receive_IT(&huart2, &Rx_byte2, 1);
-//	}
-
-//	if(huart == &huart1){
-//		counter++;
-//
-//	}
-//	log(">>>>>in\r\n");
-//	HAL_UART_Receive_IT(&huart1,&uart_recv,1);
-//	log("called\r\n");
-//	if(huart == &huart1){
-//		sprintf(str,"%d\r\n",uart_recv);
-//		log(str);
-////		if(uart_recv ==1){
-////			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5,GPIO_PIN_SET);
-////		}
-////		else{
-////			HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5,GPIO_PIN_RESET);
-////		}
-//
-//	}
-//	else{
-//		log("missUART\r\n");
-//	}
-
+	if (huart == &huart2) { // Current UART
+		Rx_data2[Rx_indx2++] = Rx_byte2;    // Add data to Rx_Buffer
+		HAL_UART_Receive_IT(&huart2, &Rx_byte2, 1);
+	}
 }
 
-void sendCommand(char* id,float hum,int soil,float temp,float light){
+void sendCommand(char* id,float hum,int soil,float temp,float light,int relay){
 	char command[128];
-	sprintf(command,"sendData('%s %f %d %f %f')\r\n",id,hum,soil,temp,light);
+	sprintf(command,"sendData('%s %f %d %f %f %d')\r\n",id,hum,soil,temp,light,relay);
 	log(command);
-	HAL_UART_Transmit(&huart1, command, strlen(command), 1000);
-
-	if(readLineUart(str)>0){
-		log(str);
-		log("\r\n");
-	}
+	wifisend(command);
 }
 
 int  readLineUart(char* buffer){
@@ -139,58 +120,277 @@ int  readLineUart(char* buffer){
 	return ret;
 }
 
-int checkCommandUart2(){
-	if(Rx_indx2 == 2){
-		if(Rx_data2[0] == 'a' && Rx_data2[1] == 'a'){
-			Rx_indx2 = 0;
-			return 1;
-		}
+int  readLineUart2(char* buffer){
+	for(int i = 0;i< Rx_indx2;i++){
+		buffer[i] = Rx_data2[i];
 	}
+	int ret = Rx_indx2;
+	buffer[Rx_indx2] = 0;
 	Rx_indx2 = 0;
-	return 0;
-
-//	for(int i = 0;i< Rx_indx;i++){
-//		buffer[i] = Rx_data[i];
-//	}
-//	int ret = Rx_indx;
-//	buffer[Rx_indx] = 0;
-//	Rx_indx = 0;
-//	return ret;
+	return ret;
 }
-//void HAL_I2C_SlaveRxCpltCallback(I2C_HandleTypeDef *hi2c){
-//	log("<receive\n\r");
-//	if(hi2c == &hi2c2){
-//			if(i2c_recv ==1){
-//				log("on\n\r");
-//				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5,GPIO_PIN_SET);
-//			}
-//			else{
-//				log("off\n\r");
-//				HAL_GPIO_WritePin(GPIOA,GPIO_PIN_5,GPIO_PIN_RESET);
-//			}
-////			HAL_I2C_Slave_Receive_IT(hi2c,&i2c_recv,1);
-//		}
-//}
-//char str[1024];
-char temp[1024];
-char humid[1024];
-char soil[1024];
 
-DHT_DataTypedef DHT11_Data;
+//char temp[1024];
+//char humid[1024];
+//char soil[1024];
+
+char *deviceID = "Naotest8";
+
+//DHT_DataTypedef DHT11_Data;
 float Temperature, Humidity = 1.0;
+uint16_t SoilHumidity = 0;
+float light = 40.0;
 int relayRunning = 0;
+void powerOnSensor(){
+	log("powerOnSensor\n");
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, 1); //On
+	// delay 2 sec for DHT
+	HAL_Delay(2000);
+}
+void powerOffSensor(){
+	log("powerOffSensor\n");
+	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, 0); //On
+
+}
 void relayOn(){
+	log("relayOn\n");
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1); //On
 	relayRunning = 1;
-	//HAL_Delay(5000);
-	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, 1); //On
 }
 
 void relayOff(){
+	log("relayOff\n");
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0); //On
-	relayRunning = 2;
+	relayRunning = 0;
 }
-extern void delay(volatile uint32_t microseconds);
+void dumpData(char *buffer,int len){
+	for(int i=0;i<len;i++){
+		sprintf(tmp,"%02X ",buffer[i]);log(tmp);
+	}
+	log("\r\n");
+}
+int getWifiStatus(){
+	char cmd[64];
+	//wifisend("showConnectionStatus()\n");
+	wifisend("print(connected)\n");
+	HAL_Delay(200);
+	int numread = readLineUart(str);
+
+	if(numread >0){
+		char *ptr = strstr(str,"\n");
+		if(ptr!=NULL){
+			//log(ptr);
+			if(sscanf(ptr,"%s",cmd) == 1){
+				//sprintf(tmp,"%d %d\r\n",numread,strlen(str));log(tmp);
+				//sprintf(tmp,"[%s]",ptr);log(tmp);
+				//dumpData(ptr,strlen(ptr));
+				if(strcmp(cmd,"true")==0){
+					log("connected\r\n");
+					return 1;
+				}
+				else{
+					log("disconnect\r\n");
+					return 0;
+				}
+			}
+		}
+	}
+}
+int getDHT(int debug){
+	if(debug == 2){
+		powerOnSensor();
+	}
+
+	char tmp[64];
+	wifisend("getDHT()\n");
+	HAL_Delay(2000);
+	int numread = readLineUart(str);
+	//sprintf(tmplog,"numread=%d\r\n",numread);log(tmplog);
+	if(numread >0){
+		if(debug == 1){
+			log(str);
+		}
+		char *ptr = strstr(str,"\n");
+		if(ptr!=NULL){
+			//log(ptr);
+			if(sscanf(ptr,"%s %f %f",&tmp[0],&Temperature,&Humidity)==3){
+				if(debug == 2){
+					powerOffSensor();
+				}
+
+				return 1;
+			}
+		}
+	}
+	if(debug == 2){
+		powerOffSensor();
+	}
+	return 0;
+}
+
+void getSoil(int debug){
+	if(debug == 2){
+		powerOnSensor();
+	}
+	HAL_ADC_Start(&hadc1);
+	// Poll ADC1 Perihperal & TimeOut = 1mSec
+	HAL_ADC_PollForConversion(&hadc1, 100);
+	// Read The ADC Conversion Result & Map It To PWM DutyCycle
+	SoilHumidity = HAL_ADC_GetValue(&hadc1);
+	if(debug == 2){
+		powerOffSensor();
+	}
+}
+
+void upload(){
+	sendCommand(deviceID, Humidity, SoilHumidity, Temperature, light, relayRunning);
+	HAL_Delay(2000);
+	int numread = readLineUart(str);
+	log(str);
+}
+
+int shoudWater(float Humidity, int SoilHumidity, float Temperature){
+//	temp //อุณหภูมิ
+//	x //ค่าความชื้นในดิน
+//	if (SoilHumidity <1400) SoilHumidity =1400;
+//	if (SoilHumidity >3600) SoilHumidity =3600;
+//	loadSetting();
+	float moisture = (4500.0 - SoilHumidity)/4000.0*100.0; //ความชื้น
+	if (moisture < parSoilHumidity ) {
+		sprintf(tmp,"bec soil = %f < %f \r\n",moisture,parSoilHumidity );
+		log(tmp);
+		return 1;
+
+	}
+	else if(Temperature > parTemperature){
+		sprintf(tmp,"bec temp = %f > %f \r\n",Temperature,parTemperature );
+		log(tmp);
+		return 1;
+	}
+	sprintf(tmp,"DONT bec soil = %f % [%d] temp = %f \r\n",moisture,SoilHumidity,Temperature );
+	log(tmp);
+
+//	if(rand()%5 == 0){
+//		return 1;
+//	}
+	return 0;
+}
+
+void readSensor()
+{
+	powerOnSensor();
+	getDHT(0);
+	getSoil(0);
+	powerOffSensor();
+}
+
+void showESPOutput()
+{
+	int numread = readLineUart(str);
+	if(numread>0){
+		log(str);
+	}
+}
+void getSetting()
+{
+	int numread = readLineUart(str);
+	if(numread>0){
+//		log(str);
+		char *ptr = strstr(str,"\n");
+//		float parTemperature = 36.0;
+//		float parSoilHumidity = 70;
+//		float parHumidity = 50;
+//		float parWater = 5;
+//		float parDoEvery = 20;
+		for(int i = 0;i< strlen(ptr);i++){
+			if(ptr[i] == '"'){
+				ptr[i] = ' ';
+			}
+		}
+		log(ptr);
+//		if(sscanf(str,"%d %s",&tmp[0],&parTemperature,&parSoilHumidity,&parHumidity,&parWater,&parDoEvery) ==6){
+//					log("good\r\n");
+//				}
+		int t;
+		if(sscanf(ptr,"%s %d %f %f %d %d %d",&tmp[0],&t,&parTemperature,&parSoilHumidity,&parHumidity,&parWater,&parDoEvery) ==7){
+			log("good\r\n");
+		}
+		sprintf(tmp,"setting in STM32: %f %f %d %d %d \r\n",parTemperature,parSoilHumidity,parHumidity,parWater,parDoEvery);
+		log(tmp);
+	}
+}
+void loadSetting()
+{
+	wifisend("loadSetting()\n");
+	HAL_Delay(1000);
+//	showESPOutput();
+	getSetting();
+
+}
+
+void processCommand()
+{
+	char cmd[1024];
+	int numread = readLineUart2(cmd);
+	if(numread>0){
+		sprintf(tmp,"cmd=%s",cmd);log(tmp);
+		if(strcmp(cmd,"water\n")==0){
+			loadSetting();
+			readSensor();
+			relayOn();
+			relayRunning = 2; 	// make it as manual watering
+			upload();
+			HAL_Delay(1000*parWater);
+			relayOff();
+			return;
+		}
+		if(strcmp(cmd,"upload\n")==0){
+			readSensor();
+			upload();
+			return;
+		}
+		if(strcmp(cmd,"status\n")==0){
+			readSensor();
+			sprintf(tmp,"%s %f %d %f %f %d\r\n",deviceID, Humidity, SoilHumidity, Temperature, light, relayRunning);
+			log(tmp);
+			return;
+		}
+		if(strcmp(cmd,"wifi\n")==0){
+			getWifiStatus();
+			return;
+		}
+		if(strcmp(cmd,"ls\n")==0){
+			loadSetting();
+			return;
+		}
+		if(cmd[0] == '#'){
+			wifisend(&cmd[1]);
+			HAL_Delay(2000);
+			showESPOutput();
+			return;
+		}
+		sprintf(tmp,"Unknow command: %s",cmd);log(tmp);
+		return;
+	}
+}
+
+void waitingForESP()
+{
+	// delay 5 sec for ESP reboot
+	HAL_Delay(5000);
+	log("waitingForESP start\r\n");
+	for(int i=0;i<60;i++){
+		if(getWifiStatus()==1){
+			log("ESP WIFI ready\r\n");
+			break;
+		}else{
+			sprintf(tmp,"wait for ESP WIFI %d\r\n",i+1);log(tmp);
+			HAL_Delay(1000);
+		}
+	}
+	log("waitingForESP end\r\n");
+}
+//extern void delay(volatile uint32_t microseconds);
 /* USER CODE END 0 */
 
 /**
@@ -200,7 +400,7 @@ extern void delay(volatile uint32_t microseconds);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-	uint16_t SoilHumidity = 0;
+
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -229,214 +429,63 @@ int main(void)
 //  ESP_Init("muminoiais_5G", "99775533");
 //  HAL_UART_Receive_IT(&huart1, &uart_recv, 1);
   HAL_UART_Receive_IT(&huart1, &Rx_byte, 1);
-//  HAL_UART_Receive_IT(&huart2, &Rx_byte2, 1);
+  HAL_UART_Receive_IT(&huart2, &Rx_byte2, 1);
   log("**-----------------------------------------------\r\n");
   char UART1_rxBuffer[100] = {'a'};
-  char* tmplog[1000];
-  char xx[128];
-  float light = 40.0;
-  sprintf(xx,"Naotest8");
+
+
+
+
 
   /*constrain part */
   float tempConst = 30.0;
   float soilConst = 1000; // low = moist
   float  humidConst = 60;  // high = moist
-  int count = 0;
+  int count = 1;
 
-
-
+  //waiting for ESP ready by checking wifistatus
+  waitingForESP();
+  loadSetting();
 
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //HAL_Delay(2000);
-  log("Setup Start\r\n");
-  //log("relayOn\r\n");
-  //relayOn();
-  /* DO NOT DELETE SET UP STUPID HAL_DELAY ------------------------------------------------------------------ */
-//    DHT_GetData(&DHT11_Data);
-  /* DO NOT DELETE SET UP STUPID HAL_DELAY ------------------------------------------------------------------ */
-
-  log("Setup End\r\n");
   while (1)
   {
-//	  getTemperatureC();
-
-	  /* relay testing 2 */
-	  	count++;
-	  	sprintf(tmplog,"#%d\r\n",count);
-	  	log(tmplog);
-	  	if(count % 2 == 0){
-	  		//if(relayRunning == 1){
-	  			relayOn();
-	  			HAL_Delay(5000);
-	  			relayOff();
-	  			HAL_Delay(2000);
-	  		//}else{
-
-	  		//}
-	  	}
-
-	/*relay testing*/
-
-
-//	  	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 1); //On
-//	  	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 0); //Off
-//	  	log("on\r\n");
-//		HAL_Delay(1000);
-//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_9, 0); //Off
-//		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8, 0); //Off
-//		log("off\r\n");
-//		HAL_Delay(2000);
-
-
-/*sensor reading*/
-//
-		HAL_ADC_Start(&hadc1);
-		// Poll ADC1 Perihperal & TimeOut = 1mSec
-		HAL_ADC_PollForConversion(&hadc1, 1);
-		// Read The ADC Conversion Result & Map It To PWM DutyCycle
-		SoilHumidity = HAL_ADC_GetValue(&hadc1);
-		sprintf(soil, "soil:  %d\r\n", SoilHumidity);
-		log(soil);
-//		HAL_Delay(6000);
-
-//	  	log("delay\r\n");
-//	  	HAL_Delay(1000);
-	  	//delay(1000*1000);
-
-	  	log("DHT_GetData start\r\n");
-		DHT_GetData(&DHT11_Data);
-		log("DHT_GetData end\r\n");
-		Temperature = DHT11_Data.Temperature;
-		Humidity = DHT11_Data.Humidity;
-		sprintf(temp, "temp:  %f\r\n", Temperature);
-		log(temp);
-		sprintf(humid, "humid:  %f\r\n", Humidity);
-		log(humid);
-		HAL_Delay(10000);
-
-//		/*LOGIC PART*/
-//		if(Temperature > tempConst && SoilHumidity > soilConst){
-//			// water
-//
-//		}
-
-
-
-//		Uart_sendstring("send 1 2 3", &huart1);
-//		log("send 8 8 8\r\n");
-//		wifisend("send 9 9 9\r\n");
-//		if(HAL_UART_Receive (&huart1, UART1_rxBuffer, 1, 5000) == HAL_OK){
-//			log(UART1_rxBuffer);
-//			log(">>>>hahaha\r\n");
-//		}
-//		else{
-////			log("readError\r\n");
-//		}
-
-
-	//thiss
-
-
-
-//	  int cmd = checkCommandUart2();
-//	  sprintf(tmplog,"%d\r\n",cmd);
-//	  log(tmplog);
-//	  sendCommand(xx, Humidity, SoilHumidity, Temperature, light);
-//	  HAL_Delay(60000);
-//	  if(cmd >0){
-//		  log("aa  OK \r\n");
-//	  }
-//		if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == 0){
-//			HAL_Delay(10);
-//			if(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) ==0){
-////				mode = !mode;
-////				HAL_UART_Transmit(&huart1, &mode, 1, 100);
-//				log(">>>>>send\r\n");
-//				  char command[128];
-//				  sprintf(command,"sendData('vinca 26 275 30 40')\r\n");
-//					HAL_UART_Transmit(&huart1, command, strlen(command), 1000);
-//
-//					if(readLineUart(str)>0){
-//						log(str);
-//						log("\r\n");
-//					}
-////				sendCommand(xx, Humidity, SoilHumidity, Temperature, light);
-//				while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) ==0);
-//					HAL_Delay(10);
-//			}
-//		}
-
-
-
-//-------------------work----------------------
-//	  char command[128];
-//	  sprintf(command,"sendData('NAO 26 275 30 40')\r\n");
-//
-//	  	HAL_UART_Transmit(&huart1, command, strlen(command), 1000);
-//
-//		if(readLineUart(str)>0){
-//			log(str);
-//			log("\r\n");
-//		}
-//	  	if(HAL_UART_Receive(&huart2, &Rx_byte2, 1,1000) == HAL_OK){
-//	  		sprintf(tmplog,"%c\r\n",Rx_byte2);
-//	  		log(tmplog);
-//	  	}
-//		HAL_Delay(6000);
-//	  ------------------------------
-
-//	  char command[128];
-//	  	sprintf(command,"sendData('%s %f %d %f %f')\r\n",id,hum,soil,temp,light);
-//	  	log(command);
-//	  	HAL_UART_Transmit(&huart1, command, strlen(command), 1000);
-
-
-
-
-//		char command[128];
-//		sprintf(command,"sendData('%s %f %d %f %f')\r\n",xx,Humidity,SoilHumidity,Temperature,light);
-//		log(command);
-//		HAL_UART_Transmit(&huart1, command, strlen(command), 1000);
-//
-//		if(readLineUart(str)>0){
-//			log("-----1\r\n");
-//			log(str);
-//			log("\r\n");
-//		}
-
-
-
-//		-----------------------------esp part
-		sendCommand(xx, Humidity, SoilHumidity, Temperature, light);
-		if(HAL_UART_Receive(&huart2, &Rx_byte2, 1,1000) == HAL_OK){
-			log("-----2\r\n");
-			sprintf(tmplog,"%c\r\n",Rx_byte2);
-			log(tmplog);
-		}
-		HAL_Delay(30000);
-//		-----------------------------esp part
-
-
-
-
-
-//		readLineUart(str);
-//		sprintf(str,"nao  %d\r\n",counter);
-//		log(str);
-
-
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-//	  Server_Start();
 
+	count++;
+	sprintf(tmp,"count=%d\r\n",count);log(tmp);
+//	loadSetting();
+	if(count % (60*parDoEvery) == 0){
+		loadSetting();
+	//if(count % (10) == 0){
+		powerOnSensor();
+		if(getDHT(0)){
+			getSoil(0);
+//			readSensor();
+			sprintf(tmp,"%s %f %d %f %f %d\r\n",deviceID, Humidity, SoilHumidity, Temperature, light, relayRunning);
+			//sprintf(tmp,"%s %.2f %.2f %.2f %.2f %d\r\n",deviceID, Humidity, SoilHumidity, Temperature, light, relayRunning);
+			log(tmp);
+			if(shoudWater(Humidity, SoilHumidity, Temperature)){
+				relayOn();
+				upload();
+				HAL_Delay(1000*parWater);
+				relayOff();
+			}else{
+				upload();
+			}
+		}
+		powerOffSensor();
+	}
+	HAL_Delay(1000);
+	showESPOutput();
+	processCommand();
   }
-  log("-----------------------------------------------\r\n");
   /* USER CODE END 3 */
 }
 
@@ -462,7 +511,7 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
   RCC_OscInitStruct.PLL.PLLM = 8;
-  RCC_OscInitStruct.PLL.PLLN = 50;
+  RCC_OscInitStruct.PLL.PLLN = 84;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = 4;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
@@ -478,7 +527,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -504,7 +553,7 @@ static void MX_ADC1_Init(void)
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
   */
   hadc1.Instance = ADC1;
-  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV2;
+  hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
   hadc1.Init.ScanConvMode = DISABLE;
   hadc1.Init.ContinuousConvMode = DISABLE;
@@ -619,7 +668,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_8, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
@@ -637,8 +686,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC4 PC8 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_8;
+  /*Configure GPIO pins : PC4 PC8 PC9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4|GPIO_PIN_8|GPIO_PIN_9;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
