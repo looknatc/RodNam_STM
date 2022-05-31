@@ -25,6 +25,8 @@
 //#include "DHT.h"
 //#include "MYDHT22.h"
 #include <stdarg.h>
+//#include <STM32byRogerLowPower.h>
+//#include <RTClock.h>
 //#include "DHT22.h"
 
 /* USER CODE END Includes */
@@ -82,6 +84,7 @@ float parSoilHumidity = 70;
 int parHumidity = 50;
 int parWater = 5;
 int parDoEvery = 20;
+int powerSaveMode = 1;
 
 void serialSend(char* str){
 	HAL_UART_Transmit(&huart2, str, strlen(str), 10);
@@ -149,7 +152,7 @@ void powerOnSensor(){
 }
 void powerOffSensor(){
 	log("powerOffSensor\n");
-	//HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, 0); //On
+	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, 0); //On
 
 }
 void relayOn(){
@@ -312,10 +315,10 @@ void getSetting()
 //					log("good\r\n");
 //				}
 		int t;
-		if(sscanf(ptr,"%s %d %f %f %d %d %d",&tmp[0],&t,&parTemperature,&parSoilHumidity,&parHumidity,&parWater,&parDoEvery) ==7){
+		if(sscanf(ptr,"%s %d %f %f %d %d %d %d",&tmp[0],&t,&parTemperature,&parSoilHumidity,&parHumidity,&parWater,&parDoEvery,&powerSaveMode) ==7){
 			log("good\r\n");
 		}
-		sprintf(tmp,"setting in STM32: %f %f %d %d %d \r\n",parTemperature,parSoilHumidity,parHumidity,parWater,parDoEvery);
+		sprintf(tmp,"setting in STM32: %f %f %d %d %d %d\r\n",parTemperature,parSoilHumidity,parHumidity,parWater,parDoEvery,powerSaveMode);
 		log(tmp);
 	}
 }
@@ -379,7 +382,7 @@ void waitingForESP()
 	// delay 5 sec for ESP reboot
 	HAL_Delay(5000);
 	log("waitingForESP start\r\n");
-	for(int i=0;i<60;i++){
+	for(int i=0;i<600;i++){
 		if(getWifiStatus()==1){
 			log("ESP WIFI ready\r\n");
 			break;
@@ -459,7 +462,14 @@ int main(void)
     /* USER CODE BEGIN 3 */
 
 	count++;
-	sprintf(tmp,"count=%d\r\n",count);log(tmp);
+	/*---------------idiot wire soil data----------------------*/
+//	getSoil(0);
+//	sprintf(tmp,"count=%d %d\r\n",count,SoilHumidity);log(tmp);
+	int val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
+	if( val > 300){
+		val = 300;
+	}
+	sprintf(tmp,"count=%d  val = %d \r\n",count,val);log(tmp);
 //	loadSetting();
 	if(count % (60*parDoEvery) == 0){
 		loadSetting();
@@ -482,7 +492,20 @@ int main(void)
 		}
 		powerOffSensor();
 	}
-	HAL_Delay(1000);
+//	int val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
+//	sprintf(tmp,"val:  %d\r\n",val);
+//	log(tmp);
+	if(val >0 && powerSaveMode == 1){
+		sprintf(tmp,"deepSleep(%d)\n",val);
+		wifisend(tmp);
+		log(tmp);
+		HAL_Delay(val*1000);
+		count += val;
+	}
+	else{
+		HAL_Delay(1000);
+	}
+
 	showESPOutput();
 	processCommand();
   }
@@ -671,7 +694,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13|GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -692,6 +715,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC10 */
   GPIO_InitStruct.Pin = GPIO_PIN_10;
