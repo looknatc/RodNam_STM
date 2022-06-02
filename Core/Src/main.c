@@ -85,12 +85,17 @@ int parHumidity = 50;
 int parWater = 5;
 int parDoEvery = 20;
 int powerSaveMode = 1;
+int tot_delay = 0;
 
 void serialSend(char* str){
 	HAL_UART_Transmit(&huart2, str, strlen(str), 10);
 }
-
+void MY_Delay(x){
+	HAL_Delay(x);
+	tot_delay+=x;
+}
 #define log(x)	serialSend(x)
+#define HAL_Delay(x) MY_Delay(x)
 void wifisend(char* str){
 	HAL_UART_Transmit(&huart1, str, strlen(str), 10);
 }
@@ -103,6 +108,23 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	if (huart == &huart2) { // Current UART
 		Rx_data2[Rx_indx2++] = Rx_byte2;    // Add data to Rx_Buffer
 		HAL_UART_Receive_IT(&huart2, &Rx_byte2, 1);
+	}
+}
+void blink(int n){
+	for(int i = 0;i<n;i++){
+		HAL_Delay(150);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		HAL_Delay(150);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+	}
+}
+void blinkLong(int n){
+	for(int i = 0;i<n;i++){
+		HAL_Delay(100);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		HAL_Delay(500);
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+
 	}
 }
 
@@ -178,11 +200,12 @@ int getWifiStatus(){
 	wifisend("print(connected)\n");
 	HAL_Delay(200);
 	int numread = readLineUart(str);
-
+	sprintf(tmp,"getWifiStatus numread =   %d\r\n",numread);
+	log(tmp);
 	if(numread >0){
 		char *ptr = strstr(str,"\n");
 		if(ptr!=NULL){
-			//log(ptr);
+			log(ptr);
 			if(sscanf(ptr,"%s",cmd) == 1){
 				//sprintf(tmp,"%d %d\r\n",numread,strlen(str));log(tmp);
 				//sprintf(tmp,"[%s]",ptr);log(tmp);
@@ -198,6 +221,7 @@ int getWifiStatus(){
 			}
 		}
 	}
+
 }
 int getDHT(int debug){
 	if(debug == 2){
@@ -281,6 +305,7 @@ int shoudWater(float Humidity, int SoilHumidity, float Temperature){
 
 void readSensor()
 {
+	blink(2);
 	powerOnSensor();
 	getDHT(0);
 	getSoil(0);
@@ -341,10 +366,11 @@ void processCommand()
 			loadSetting();
 			readSensor();
 			relayOn();
-			relayRunning = 2; 	// make it as manual watering
-			upload();
+
 			HAL_Delay(1000*parWater);
 			relayOff();
+			relayRunning = 2; 	// make it as manual watering
+			upload();
 			return;
 		}
 		if(strcmp(cmd,"upload\n")==0){
@@ -389,6 +415,8 @@ void waitingForESP()
 		}else{
 			sprintf(tmp,"wait for ESP WIFI %d\r\n",i+1);log(tmp);
 			HAL_Delay(1000);
+			showESPOutput();
+			processCommand();
 		}
 	}
 	log("waitingForESP end\r\n");
@@ -447,8 +475,32 @@ int main(void)
   int count = 1;
 
   //waiting for ESP ready by checking wifistatus
+  blink(10);
   waitingForESP();
   loadSetting();
+  powerOnSensor();
+  float checkDHT = 0;
+  float checkSoil = 0;
+  int valError = 0;
+
+  for(int i = 0;i< 4;i++){
+	getDHT(0);
+	getSoil(0);
+	checkSoil += SoilHumidity;
+	checkDHT += Temperature;
+//	blinkLong(2);
+	sprintf(tmp,"%d %f\r\n",SoilHumidity, Temperature);
+	log(tmp);
+	if(SoilHumidity <1000 || SoilHumidity > 4200 || SoilHumidity == 0 || Temperature == 0.0){
+		valError = 1;
+		blinkLong(3);
+	}
+
+  }
+  powerOffSensor();
+  if(valError){
+	  log("value error\r\n");
+  }
 
 
   /* USER CODE END 2 */
@@ -460,6 +512,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	 tot_delay = 0;
 
 	count++;
 	/*---------------idiot wire soil data----------------------*/
@@ -467,13 +520,18 @@ int main(void)
 //	sprintf(tmp,"count=%d %d\r\n",count,SoilHumidity);log(tmp);
 	int val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
 	if( val > 300){
-		val = 300;
+		loadSetting();
+		val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
+		if(val > 300){
+			val = 300;
+		}
 	}
 	sprintf(tmp,"count=%d  val = %d \r\n",count,val);log(tmp);
 //	loadSetting();
 	if(count % (60*parDoEvery) == 0){
 		loadSetting();
 	//if(count % (10) == 0){
+		blink(2);
 		powerOnSensor();
 		if(getDHT(0)){
 			getSoil(0);
@@ -483,9 +541,10 @@ int main(void)
 			log(tmp);
 			if(shoudWater(Humidity, SoilHumidity, Temperature)){
 				relayOn();
-				upload();
+
 				HAL_Delay(1000*parWater);
 				relayOff();
+				upload();
 			}else{
 				upload();
 			}
@@ -495,15 +554,24 @@ int main(void)
 //	int val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
 //	sprintf(tmp,"val:  %d\r\n",val);
 //	log(tmp);
+	val = (60*(parDoEvery))-(count % (60*parDoEvery))-30;
 	if(val >0 && powerSaveMode == 1){
 		sprintf(tmp,"deepSleep(%d)\n",val);
 		wifisend(tmp);
 		log(tmp);
+		blink(5);
 		HAL_Delay(val*1000);
+//		blinkLong(1);
 		count += val;
 	}
 	else{
-		HAL_Delay(1000);
+//		blink(1);
+		sprintf(tmp,"tot_delay (%d)\n",1000-tot_delay);
+		log(tmp);
+		if(tot_delay<1000){
+			HAL_Delay(1000-tot_delay);
+		}
+
 	}
 
 	showESPOutput();
